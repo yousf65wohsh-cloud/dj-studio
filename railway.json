@@ -1,0 +1,10 @@
+{
+  "build": {
+    "command": "npm run build -- --webpack"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/",
+    "restartPolicyType": "always"
+  }
+}

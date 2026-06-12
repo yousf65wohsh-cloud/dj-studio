@@ -1,0 +1,8 @@
+[nixpacks]
+providers = ["node"]
+
+[nixpacks.build]
+cmd = "npm run build -- --webpack"
+
+[nixpacks.deploy]
+startCmd = "npm start"

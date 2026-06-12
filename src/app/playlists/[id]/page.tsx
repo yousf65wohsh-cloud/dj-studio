@@ -1,0 +1,132 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { ArrowRight, Music2, Plus, Trash2, Play, ListMusic } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import { AppShell } from "@/components/layout/AppShell"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Dialog } from "@/components/ui/dialog"
+import { SongCard } from "@/components/music/SongCard"
+import { usePlayerStore } from "@/store/playerStore"
+import type { Playlist, PlaylistSong, Song } from "@/lib/types"
+
+export default function PlaylistDetailPage() {
+  const params = useParams()
+  const router = useRouter()
+  const [playlist, setPlaylist] = useState<Playlist | null>(null)
+  const [playlistSongs, setPlaylistSongs] = useState<PlaylistSong[]>([])
+  const [allSongs, setAllSongs] = useState<Song[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const supabase = createClient()
+  const { setQueue } = usePlayerStore()
+
+  const fetchData = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    const [playlistRes, songsRes] = await Promise.all([
+      supabase.from("playlists").select("*").eq("id", params.id).single(),
+      supabase.from("playlist_songs").select("*, song:songs(*)").eq("playlist_id", params.id).order("position", { ascending: true }),
+    ])
+    setPlaylist(playlistRes.data)
+    setPlaylistSongs(songsRes.data || [])
+    if (user) {
+      const { data } = await supabase.from("songs").select("*").eq("user_id", user.id)
+      setAllSongs(data || [])
+    }
+  }
+
+  useEffect(() => { fetchData() }, [params.id])
+
+  const addSong = async (songId: string) => {
+    await supabase.from("playlist_songs").insert({
+      playlist_id: params.id as string,
+      song_id: songId,
+      position: playlistSongs.length,
+    })
+    setShowAdd(false)
+    fetchData()
+  }
+
+  const removeSong = async (psId: string) => {
+    await supabase.from("playlist_songs").delete().eq("id", psId)
+    fetchData()
+  }
+
+  const psIds = new Set(playlistSongs.map((ps) => ps.song?.id))
+  const available = allSongs.filter((s) => !psIds.has(s.id))
+  const songs = playlistSongs.map((ps) => ps.song!).filter(Boolean)
+
+  if (!playlist) return null
+
+  return (
+    <AppShell>
+      <div className="p-6 space-y-6">
+        <button onClick={() => router.push("/playlists")} className="flex items-center gap-2 text-white/50 hover:text-white">
+          <ArrowRight size={18} /><span className="text-sm">العودة للقوائم</span>
+        </button>
+
+        <div className="flex items-start gap-6">
+          <div className="h-48 w-48 rounded-2xl bg-gradient-to-br from-green-500/20 to-emerald-600/20 flex-shrink-0 flex items-center justify-center">
+            <ListMusic size={60} className="text-white/30" />
+          </div>
+          <div className="flex-1 pt-4">
+            <h1 className="text-3xl font-bold text-white">{playlist.title}</h1>
+            <p className="text-sm text-white/40 mt-2">{playlistSongs.length} أغنية</p>
+            {songs.length > 0 && (
+              <Button size="sm" className="mt-4" onClick={() => setQueue(songs, 0)}>
+                <Play size={16} className="ml-1" />تشغيل الكل
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-white">الأغاني</h2>
+          <Button size="sm" onClick={() => setShowAdd(true)}><Plus size={16} className="ml-1" />إضافة أغنية</Button>
+        </div>
+
+        {songs.length === 0 ? (
+          <div className="text-center py-12">
+            <Music2 size={32} className="mx-auto text-white/20 mb-3" />
+            <p className="text-white/50">لا توجد أغاني في هذه القائمة</p>
+          </div>
+        ) : (
+          <Card className="divide-y divide-white/5 p-2">
+            {songs.map((song) => {
+              const ps = playlistSongs.find((p) => p.song?.id === song.id)
+              return (
+                <div key={song.id} className="group flex items-center gap-2">
+                  <div className="flex-1"><SongCard song={song} allSongs={songs} /></div>
+                  {ps && (
+                    <button onClick={() => removeSong(ps.id)} className="text-white/20 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-2">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </Card>
+        )}
+
+        <Dialog open={showAdd} onClose={() => setShowAdd(false)} title="إضافة أغنية">
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {available.length === 0 ? (
+              <p className="text-center text-white/50 py-4">جميع الأغاني مضافة بالفعل</p>
+            ) : (
+              available.map((song) => (
+                <button key={song.id} onClick={() => addSong(song.id)} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors text-right">
+                  <Music2 size={18} className="text-white/40 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm text-white truncate">{song.title}</p>
+                    <p className="text-xs text-white/40 truncate">{song.artist}</p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </Dialog>
+      </div>
+    </AppShell>
+  )
+}
